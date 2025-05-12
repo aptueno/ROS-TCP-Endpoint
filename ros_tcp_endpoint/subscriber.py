@@ -22,14 +22,34 @@ from rclpy.qos import QoSProfile
 from .communication import RosReceiver
 
 
+def get_qos_profile_for_topic(topic: str, default_depth=100) -> QoSProfile:
+    """
+    Return an appropriate QoS profile based on the topic name.
+    This allows special handling of topics like /tf_static.
+    """
+    if topic.endswith("/tf_static"):
+        return QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=default_depth,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
+        )
+    else:
+        return QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=default_depth,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.VOLATILE
+        )
+
+
 class RosSubscriber(RosReceiver):
     """
     Class to send messages outside of ROS network
     """
 
-    def __init__(self, topic, message_class, tcp_server, queue_size=10):
+    def __init__(self, topic, message_class, tcp_server, queue_size=100):
         """
-
         Args:
             topic:         Topic name to publish messages to
             message_class: The message class in catkin workspace
@@ -43,7 +63,7 @@ class RosSubscriber(RosReceiver):
         self.tcp_server = tcp_server
         self.queue_size = queue_size
 
-        qos_profile = QoSProfile(depth=queue_size)
+        qos_profile = get_qos_profile_for_topic(topic, default_depth=queue_size)
 
         # Start Subscriber listener function
         self.subscription = self.create_subscription(
@@ -59,7 +79,6 @@ class RosSubscriber(RosReceiver):
 
         Returns:
             self.msg: The deserialize message
-
         """
         self.tcp_server.send_unity_message(self.topic, data)
         return self.msg

@@ -15,9 +15,31 @@
 import rclpy
 import re
 
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
 from rclpy.serialization import deserialize_message
 
 from .communication import RosSender
+
+
+def get_qos_profile_for_topic(topic: str, default_depth=100) -> QoSProfile:
+    """
+    Return an appropriate QoS profile based on the topic name.
+    This allows special handling of topics like /tf_static.
+    """
+    if topic.endswith("/tf_static"):
+        return QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=default_depth,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
+        )
+    else:
+        return QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=default_depth,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE
+        )
 
 
 class RosPublisher(RosSender):
@@ -25,20 +47,21 @@ class RosPublisher(RosSender):
     Class to publish messages to a ROS topic
     """
 
-    # TODO: surface latch functionality
-    def __init__(self, topic, message_class, queue_size=10, latch=False):
+    def __init__(self, topic, message_class, queue_size=100, latch=False):
         """
-
         Args:
             topic:         Topic name to publish messages to
             message_class: The message class in catkin workspace
             queue_size:    Max number of entries to maintain in an outgoing queue
+            latch:         Not used in ROS 2 (included for compatibility)
         """
         strippedTopic = re.sub("[^A-Za-z0-9_]+", "", topic)
         node_name = f"{strippedTopic}_RosPublisher"
         RosSender.__init__(self, node_name)
+
         self.msg = message_class()
-        self.pub = self.create_publisher(message_class, topic, queue_size)
+        qos_profile = get_qos_profile_for_topic(topic, default_depth=queue_size)
+        self.pub = self.create_publisher(message_class, topic, qos_profile)
 
     def send(self, data):
         """
@@ -47,15 +70,8 @@ class RosPublisher(RosSender):
 
         Args:
             data: The already serialized message_class data coming from outside of ROS
-
-        Returns:
-            None: Explicitly return None so behaviour can be
         """
-        # message_type = type(self.msg)
-        # message = deserialize_message(data, message_type)
-
         self.pub.publish(data)
-
         return None
 
     def unregister(self):
